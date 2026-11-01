@@ -364,8 +364,8 @@ void GamePauseScreen::update() {
 // ===================== RetroVerze lobby status =====================
 // Endpoint lobby RetroVerze (ditemukan di script halaman retroverze.my.id). Format: XML.
 static const char *kLobbyStatusUrl = "https://seratus.retroverze.my.id/status.xml";
-// Nama game di server (harus sama persis dengan atribut name di XML; "(relay)" sengaja tidak ikut).
-static const char *kLobbyGameName = "Monster Hunter Portable 3rd";
+// Game yang ditampilkan paling atas (nama persis seperti atribut name di XML). Game lain tetap ditampilkan di bawahnya.
+static const char *kLobbyPriorityGame = "Monster Hunter Portable 3rd";
 // Auto refresh (detik) saat pause menu terbuka dan tab Lobby Status aktif. 0 = hanya manual.
 static const double kLobbyAutoRefreshSec = 20.0;
 // Batas waktu request sebelum dianggap gagal (detik).
@@ -398,34 +398,43 @@ static std::string TrimCopy(const std::string &s) {
 
 // Nama group dari server -> judul tampilan. Format server saat ini: "GH 01 A".
 // Format lama (MHP3Q0 / MHP3Q0A) tetap didukung: angka dimulai dari 0, jadi MHP3Q0 -> "GH 01".
-static bool NormalizeGroupName(const std::string &name, std::string *title) {
-	if (name.compare(0, 3, "GH ") == 0) {
-		*title = TrimCopy(name);
-		return true;
-	}
+static bool NormalizeGroupName(const std::string &rawName, std::string *title) {
+	const std::string name = TrimCopy(rawName);
+	if (name.empty())
+		return false;
 	static const char *kLegacyPrefix = "MHP3Q";
 	const size_t plen = strlen(kLegacyPrefix);
 	if (name.compare(0, plen, kLegacyPrefix) == 0) {
 		size_t i = plen;
 		while (i < name.size() && isdigit(static_cast<unsigned char>(name[i]))) i++;
-		if (i == plen)
-			return false;
-		const int num = atoi(name.substr(plen, i - plen).c_str());
-		char head[32];
-		snprintf(head, sizeof(head), "GH %02d", num + 1);
-		*title = head;
-		if (i < name.size())
-			*title += " " + name.substr(i);
-		return true;
+		if (i > plen) {
+			const int num = atoi(name.substr(plen, i - plen).c_str());
+			char head[32];
+			snprintf(head, sizeof(head), "GH %02d", num + 1);
+			*title = head;
+			if (i < name.size())
+				*title += " " + name.substr(i);
+			return true;
+		}
 	}
-	return false;
+	*title = name;  // format server saat ini ("GH 01 A") dan nama lain dipakai apa adanya
+	return true;
 }
 
-// Parse status.xml -> baris "GH 01 A (2) - nama1, nama2". Hanya GH yang ada pemainnya.
-// Alamat IP pemain di XML sengaja tidak dibaca. Return false jika XML tidak valid / bukan format yang dikenal.
-static bool ParseLobbyXml(const std::string &xml, std::vector<std::string> *lines, int *players) {
-	lines->clear();
-	*players = 0;
+// Urutan tampil: MHP3rd dulu, lalu game lain (alfabet), entri "(relay)" paling akhir.
+static int LobbySectionRank(const std::string &game) {
+	if (game == kLobbyPriorityGame)
+		return 0;
+	if (game.find("(relay)") != std::string::npos)
+		return 2;
+	return 1;
+}
+
+// Parse status.xml -> daftar game, tiap game berisi baris "GH 01 A (2) - nama1, nama2".
+// Hanya GH yang ada pemainnya. Alamat IP pemain di XML sengaja tidak dibaca.
+// Return false jika XML tidak valid / bukan format yang dikenal.
+static bool ParseLobbyXml(const std::string &xml, std::vector<LobbySection> *sections) {
+	sections->clear();
 	pugi::xml_document doc;
 	if (!doc.load_buffer(xml.data(), xml.size()))
 		return false;
@@ -433,9 +442,10 @@ static bool ParseLobbyXml(const std::string &xml, std::vector<std::string> *line
 	bool sawGame = false;
 	auto handleGame = [&](pugi::xml_node game) {
 		sawGame = true;
-		if (std::string(game.attribute("name").as_string()) != kLobbyGameName)
+		LobbySection sec;
+		sec.game = TrimCopy(game.attribute("name").as_string());
+		if (sec.game.empty())
 			return;
-		int total = 0;
 		for (pugi::xml_node group : game.children("group")) {
 			std::string title;
 			if (!NormalizeGroupName(group.attribute("name").as_string(), &title))
@@ -453,10 +463,13 @@ static bool ParseLobbyXml(const std::string &xml, std::vector<std::string> *line
 			}
 			if (count == 0)
 				continue;
-			total += count;
-			lines->push_back(title + " (" + std::to_string(count) + ") - " + names);
+			sec.players += count;
+			sec.lines.push_back(title + " (" + std::to_string(count) + ") - " + names);
 		}
-		*players = total;
+		if (sec.lines.empty())
+			return;
+		std::sort(sec.lines.begin(), sec.lines.end());
+		sections->push_back(std::move(sec));
 	};
 
 	for (pugi::xml_node top : doc.children()) {
@@ -467,14 +480,18 @@ static bool ParseLobbyXml(const std::string &xml, std::vector<std::string> *line
 				handleGame(game);
 		}
 	}
-	std::sort(lines->begin(), lines->end());
+	std::sort(sections->begin(), sections->end(), [](const LobbySection &a, const LobbySection &b) {
+		const int ra = LobbySectionRank(a.game), rb = LobbySectionRank(b.game);
+		if (ra != rb)
+			return ra < rb;
+		return a.game < b.game;
+	});
 	return sawGame;
 }
 
 bool GamePauseScreen::LobbyEnabled() const {
-	// ULJM05800 = Monster Hunter Portable 3rd (JP). Tambah ID lain bila perlu.
-	const std::string id = g_paramSFO.GetDiscID();
-	return id == "ULJM05800";
+	// Tab Lobby Status tampil di semua game.
+	return true;
 }
 
 void GamePauseScreen::CancelLobby() {
@@ -511,7 +528,7 @@ void GamePauseScreen::UpdateLobby() {
 
 			if (!httpOk) {
 				lobbyError_ = code > 0 ? "Server RetroVerze mengalami gangguan (HTTP " + std::to_string(code) + ")" : "Gagal terhubung ke server RetroVerze";
-			} else if (!ParseLobbyXml(data, &lobbyLines_, &lobbyPlayers_)) {
+			} else if (!ParseLobbyXml(data, &lobbySections_)) {
 				lobbyError_ = "Respons server tidak valid";
 			} else {
 				lobbyError_.clear();
@@ -545,14 +562,18 @@ void GamePauseScreen::UpdateLobby() {
 	}
 }
 
+static int SumPlayers(const std::vector<LobbySection> &s) {
+	int t = 0;
+	for (const auto &x : s) t += x.players;
+	return t;
+}
+
 // Isi ulang daftar GH di tempat (tanpa RecreateViews), supaya tab aktif dan posisi scroll tidak reset.
 void GamePauseScreen::RebuildLobbyContent() {
 	using namespace UI;
 	if (!lobbyContent_)
 		return;
 	lobbyContent_->Clear();
-
-	lobbyContent_->Add(new ItemHeader(kLobbyGameName));
 
 	// Status koneksi + waktu pembaruan terakhir.
 	if (lobbyRequest_) {
@@ -563,14 +584,17 @@ void GamePauseScreen::RebuildLobbyContent() {
 		if (!lobbyUpdatedText_.empty())
 			lobbyContent_->Add(new TextView("Data terakhir berhasil: " + lobbyUpdatedText_, FLAG_WRAP_TEXT, true, new LinearLayoutParams(Margins(4, 2))));
 	} else if (lobbyLoaded_) {
-		lobbyContent_->Add(new TextView("Status server: terhubung  |  Diperbarui: " + lobbyUpdatedText_ + "  |  Pemain aktif: " + std::to_string(lobbyPlayers_), FLAG_WRAP_TEXT, true, new LinearLayoutParams(Margins(4, 2))));
+		lobbyContent_->Add(new TextView("Status server: terhubung  |  Diperbarui: " + lobbyUpdatedText_ + "  |  Pemain aktif: " + std::to_string(SumPlayers(lobbySections_)), FLAG_WRAP_TEXT, true, new LinearLayoutParams(Margins(4, 2))));
 	}
 
-	if (lobbyError_.empty() && lobbyLoaded_ && lobbyLines_.empty()) {
+	if (lobbyError_.empty() && lobbyLoaded_ && lobbySections_.empty()) {
 		lobbyContent_->Add(new TextView("Tidak ada GH yang terisi saat ini", FLAG_WRAP_TEXT, true, new LinearLayoutParams(Margins(4, 6))));
 	} else if (lobbyError_.empty()) {
-		for (const std::string &line : lobbyLines_)
-			lobbyContent_->Add(new TextView(line, FLAG_WRAP_TEXT, true));
+		for (const LobbySection &sec : lobbySections_) {
+			lobbyContent_->Add(new ItemHeader(sec.game));
+			for (const std::string &line : sec.lines)
+				lobbyContent_->Add(new TextView(line, FLAG_WRAP_TEXT, true));
+		}
 	}
 }
 

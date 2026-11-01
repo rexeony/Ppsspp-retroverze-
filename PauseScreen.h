@@ -19,6 +19,8 @@
 
 #include <functional>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "Common/File/Path.h"
 #include "Common/UI/UIScreen.h"
@@ -30,6 +32,13 @@
 #include "UI/AdhocServerScreen.h"
 #include "Common/Net/HTTPRequest.h"
 #include "Common/UI/TabHolder.h"
+
+// Satu game di server RetroVerze beserta GH-nya yang terisi.
+struct LobbySection {
+	std::string game;
+	std::vector<std::string> lines;  // "GH 01 A (2) - nama1, nama2"
+	int players = 0;
+};
 
 class GamePauseScreen : public UIBaseDialogScreen, protected ControlListener {
 public:
@@ -76,10 +85,9 @@ private:
 	void CreateLobbyTab(UI::ViewGroup *parent);
 	void RebuildLobbyContent();
 	std::shared_ptr<http::Request> lobbyRequest_;
-	std::vector<std::string> lobbyLines_;
+	std::vector<LobbySection> lobbySections_;
 	std::string lobbyError_;
 	std::string lobbyUpdatedText_;
-	int lobbyPlayers_ = 0;
 	bool lobbyLoaded_ = false;
 	double lobbyLastRefresh_ = 0.0;
 	double lobbyRequestStart_ = 0.0;
