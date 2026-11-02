@@ -5,7 +5,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="${1:?Pakai: apply_retroverze.sh <folder ppsspp>}"
 NEW_ID="${RETROVERZE_APP_ID:-id.retroverze.ppsspp}"
-NEW_NAME="${RETROVERZE_APP_NAME:-PPSSPP RetroVerze}"
+NEW_NAME="${RETROVERZE_APP_NAME:-PPSSPP Openvpn}"
 
 # 1. Ganti file pause screen (fitur Lobby Status)
 # (mendukung 2 tata letak: file langsung di root repo, atau di overlay/UI/)

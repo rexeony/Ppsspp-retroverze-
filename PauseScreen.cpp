@@ -79,6 +79,7 @@
 #include "UI/BackgroundAudio.h"
 #include "UI/MiscViews.h"
 #include "UI/AdhocServerScreen.h"
+#include "UI/RetroVerzeMultiplayerScreen.h"  // RETROVERZE-MP
 
 // This is in an objective-C file.
 #if PPSSPP_PLATFORM(IOS)
@@ -348,6 +349,11 @@ void GamePauseScreen::update() {
 		lastAdhocServerConnected_ = g_adhocServerConnected;
 		lastOnline_ = networkConnected;
 		lastDNSConfigLoaded_ = dnsConfig.loaded;
+	}
+
+	// RETROVERZE-MP: bangun ulang menu saat status multiplayer (VPN/relay/on-off) berubah.
+	if (RetroVerze_MultiplayerLabel() != lastMultiplayerLabel_) {
+		RecreateViews();
 	}
 
 	UpdateLobby();
@@ -927,6 +933,12 @@ void GamePauseScreen::CreateViews() {
 		continueChoice->OnClick.Handle<UIScreen>(this, &UIScreen::OnBack);
 		rightColumnItems->Add(new Spacer(20.0));
 	}
+
+	// RETROVERZE-MP: Multiplayer (OpenVPN atau Server Relay) langsung dari pause screen.
+	lastMultiplayerLabel_ = RetroVerze_MultiplayerLabel();
+	rightColumnItems->Add(new Choice(lastMultiplayerLabel_))->OnClick.Add([this](UI::EventParams &) {
+		screenManager()->push(new RetroVerzeMultiplayerScreen());
+	});
 
 	if (g_paramSFO.IsValid() && g_Config.HasGameConfig(g_paramSFO.GetDiscID())) {
 		rightColumnItems->Add(new Choice(pa->T("Game Settings"), ImageID("I_GEAR")))->OnClick.Handle(this, &GamePauseScreen::OnGameSettings);

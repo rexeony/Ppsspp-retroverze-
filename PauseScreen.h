@@ -77,6 +77,9 @@ private:
 
 	void AddExtraOptions(UI::ViewGroup *parent);
 
+	// --- RetroVerze multiplayer (OpenVPN / Server Relay), bisa diaktifkan dari pause screen ---
+	std::string lastMultiplayerLabel_;
+
 	// --- RetroVerze lobby status (MHP3rd) ---
 	bool LobbyEnabled() const;
 	void RefreshLobby();
