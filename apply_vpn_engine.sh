@@ -73,6 +73,13 @@ android {{
         buildConfig = true
     }}
 
+    buildTypes {{
+        // Samakan dengan build type "optimized" milik PPSSPP supaya Gradle menemukan varian library.
+        create("optimized") {{
+            initWith(getByName("release"))
+        }}
+    }}
+
     defaultConfig {{
         minSdk = 23
         buildConfigField("boolean", "openvpn3", "true")
@@ -171,6 +178,15 @@ if 'project(":openvpn-engine")' not in app_gradle:
     app_gradle = app_gradle.replace('minSdk = 21', 'minSdk = 23', 1)   # mesin VPN membutuhkan minSdk 23
     write(app_gradle_path, app_gradle)
 print("OK  android/build.gradle.kts (dependensi + minSdk 23)")
+
+# Build type "optimized" milik PPSSPP tidak ada di library VPN -> pakai varian "release" library.
+app_gradle = read(app_gradle_path)
+if 'matchingFallbacks' not in app_gradle:
+    app_gradle, n = re.subn(r'(create\("optimized"\)\s*\{\s*isMinifyEnabled\s*=\s*false)',
+                            r'\1\n\t\t\tmatchingFallbacks.add("release")', app_gradle, count=1)
+    assert n == 1, "build type optimized tidak ditemukan di android/build.gradle.kts"
+    write(app_gradle_path, app_gradle)
+print("OK  build type optimized -> fallback release")
 PY
 
 echo "OK: mesin VPN (ics-openvpn) digabungkan ke PPSSPP"
