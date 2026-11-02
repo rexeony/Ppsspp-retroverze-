@@ -1,0 +1,11 @@
+PAKET TAHAP 2 - PPSSPP RetroVerze (tombol Multiplayer On/Off)
+
+Letakkan di repo GitHub kamu (sejajar dengan apply_retroverze.sh):
+  apply_vpn_engine.sh                    (Tahap 1, sama seperti sebelumnya)
+  retroverze.ovpn                        (file .ovpn RetroVerze, WAJIB ada di root repo)
+  tahap2/                                (seluruh isi folder ini)
+  .github/workflows/retroverze_apk.yml   (ganti yang lama; lokasi sesuai workflow lama kamu)
+
+Urutan di workflow: apply_retroverze.sh -> apply_vpn_engine.sh -> tahap2/apply_vpn_ui.sh -> tahap2/apply_vpn_menu.sh
+Skrip tahap 2 TIDAK menyentuh PauseScreen.cpp/.h (lobby status & GH tetap utuh).
+Hanya mengubah: UI/MainScreen.cpp/.h, android/jni/app-android.cpp, PpssppActivity.java, AndroidManifest.xml.
