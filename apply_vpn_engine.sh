@@ -83,6 +83,8 @@ android {{
     defaultConfig {{
         minSdk = 23
         buildConfigField("boolean", "openvpn3", "true")
+        // Library tanpa product flavor tidak punya BuildConfig.FLAVOR; kode ics-openvpn memakainya.
+        buildConfigField("String", "FLAVOR", "\\"skeleton\\"")
         if (project.hasProperty("RETROVERZE_ARM64_ONLY")) {{
             ndk {{
                 abiFilters.add("arm64-v8a")
